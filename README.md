@@ -25,7 +25,7 @@ see the project report (AD-01 … AD-10).
 | `apps/diner`, `apps/stall` | Single-file web apps (static, no build step) |
 | `apps/demo` | Local-only demo launcher + live dashboard (see below) — not part of the deploy pipeline |
 | `tests/` | pytest: pure domain tests + repository tests against moto-mocked DynamoDB |
-| `.github/workflows/` | `ci.yml` (ruff, pip-audit, bandit, gitleaks) — tests/sam-validate and a `deploy.yml` are planned follow-ups |
+| `.github/workflows/` | `ci.yml` (ruff, tests, pip-audit, bandit, gitleaks, sam-validate) — `deploy.yml` (dev → approval → prod) is a planned follow-up |
 | `loadtest/order_flow.js` | k6 model: 70 RPS browse + 30 RPS orders for 10 min |
 | `scripts/` | `seed_data.py` (demo users, stalls, menus), `smoke.py` (post-deploy check) |
 | `docs/openapi.yaml` | The platform API contract |
