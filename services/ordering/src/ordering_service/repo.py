@@ -24,7 +24,7 @@ def _order_ttl_seconds() -> int:
         try:
             value = boto3.client("ssm").get_parameter(Name=param)["Parameter"]["Value"]
             return int(value) * 86400
-        except Exception:  # config read must never block order intake  # nosec B110
+        except Exception:  # config read must never block order intake
             pass
     return DEFAULT_ORDER_TTL_DAYS * 86400
 

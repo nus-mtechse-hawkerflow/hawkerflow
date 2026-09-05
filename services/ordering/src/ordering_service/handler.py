@@ -1,4 +1,5 @@
 """Ordering service - order intake and lifecycle API."""
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -25,6 +26,8 @@ def _now_iso() -> str:
 
 
 def lambda_handler(event, _context):
+    if "Records" in event:
+        return _process_queue(event)
     try:
         return _route(event)
     except ApiError as exc:
@@ -32,6 +35,26 @@ def lambda_handler(event, _context):
     except Exception:  # noqa: BLE001
         log.exception("unhandled error")
         return error(500, "internal error")
+
+
+def _process_queue(event):
+    failures = []
+    for record in event["Records"]:
+        try:
+            attributes = record.get("messageAttributes", {})
+            user = attributes["userSub"]["stringValue"]
+            idempotency_key = attributes["idempotencyKey"]["stringValue"]
+            body = json.loads(record["body"])
+            stall_id = body.get("stallId") or ""
+            stall, menu = repo.get_stall_and_menu(stall_id)
+            order = domain.build_order(
+                user, stall, menu, body.get("items"), idempotency_key, _now_iso()
+            )
+            repo.create_order(order)
+        except Exception:  # noqa: BLE001
+            log.exception("failed to process order message")
+            failures.append({"itemIdentifier": record["messageId"]})
+    return {"batchItemFailures": failures}
 
 
 def _route(event):

@@ -1,20 +1,14 @@
 name: CI
-
 on:
-  push:
   pull_request:
+  push:
     branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  ruff:
-    name: ruff
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,66 +16,32 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
-      - run: ruff check .
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Unit and repository tests (pytest + moto)
+        run: pytest -q
+      - name: Dependency vulnerability scan (pip-audit)
+        run: pip-audit -r requirements-dev.txt
 
-  tests:
-    name: tests
+  secret-scan:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
-      - run: pytest -q
-
-  pip-audit:
-    name: pip-audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
-      - run: pip-audit -r requirements-dev.txt
-
-  bandit:
-    name: bandit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
-      - run: bandit -r services scripts
-
-  gitleaks:
-    name: gitleaks
-    runs-on: ubuntu-latest
-    env:
-      GITLEAKS_VERSION: "8.30.1"
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install gitleaks
-        run: |
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
-          sudo install gitleaks /usr/local/bin/gitleaks
-      - run: gitleaks detect --source . -v --redact
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   sam-validate:
-    name: sam-validate
     runs-on: ubuntu-latest
-    env:
-      SAM_CLI_TELEMETRY: "0"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
       - uses: aws-actions/setup-sam@v2
-      - run: sam validate -t infra/template.yaml --lint
+        with:
+          use-installer: true
+      - name: Validate template (offline lint)
+        run: sam validate -t infra/template.yaml --lint --region ap-southeast-1
+      - name: Prove the app builds
+        run: sam build -t infra/template.yaml

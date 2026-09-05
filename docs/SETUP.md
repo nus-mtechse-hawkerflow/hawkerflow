@@ -84,54 +84,6 @@ Use **one AWS account for the whole team** — one free-credit pool, one bill to
 
 ---
 
-## Part 2b — Run it locally (optional, but do this first)
-
-> Detailed version with checkpoints and troubleshooting: [RUN_LOCALLY.md](RUN_LOCALLY.md)
-
-Before touching AWS, run the whole backend on your machine:
-
-```bash
-make local
-```
-
-Then open <http://localhost:8000/demo/> — a one-click launcher (4 diner personas + the stall
-owner, no sign-in form) with a live dashboard, or go straight to <http://localhost:8000/diner/>
-and <http://localhost:8000/stall/> and sign in on either (the local server issues stub tokens;
-the Cognito call is skipped because `CLIENT_ID` is `LOCAL`).
-
-✅ Checkpoint: place an order in the diner app, accept it in the stall portal, and watch the
-diner's status flip to READY within ~5 s. The server log prints each `pipeline -> OrderAccepted`
-step as the real dispatcher and consumers run.
-
-For direct API calls, replace the Cognito JWT with a stub token:
-
-```bash
-curl localhost:8000/v1/centres/maxwell/stalls                      # public, no auth
-curl localhost:8000/v1/me/orders -H "authorization: local-diner"   # consumer
-curl localhost:8000/v1/stalls/ahhock-cr/orders -H "authorization: local-owner"   # producer
-```
-
-### Rehearse the fault-isolation demo locally
-
-```bash
-curl -X POST "localhost:8000/_local/break?service=notification"     # break one service
-# place a few orders in the diner app - they still succeed (HTTP 201)
-curl localhost:8000/_local/status                                    # DLQ depth rises, analytics unaffected
-curl -X POST "localhost:8000/_local/repair?service=notification"
-curl -X POST "localhost:8000/_local/redrive?service=notification"    # nothing was lost
-```
-
-The local server retries three times before parking a message, mirroring the redrive policy in
-`infra/template.yaml`. Rehearse here, then capture the real evidence on AWS with
-`make fault-demo`, where the DLQ and its CloudWatch alarm are genuine.
-
-**What local mode does not cover:** real Cognito tokens and password policy, IAM permissions,
-API Gateway throttling, **reserved concurrency and the per-service bulkheads**, genuine SQS
-visibility timeouts and CloudWatch DLQ alarms, DynamoDB Streams shard parallelism, and cold
-starts. Local runs everything in one process with no concurrency limits, so it can demonstrate
-fault *containment* but not concurrency *isolation*. Those are only exercised on a real deployment — which is what
-`scripts/integration_test.py` verifies.
-
 ## Part 3 — Deploy and seed `dev`
 
 1. **Deploy** (~3–4 min; CloudFront inside the stack can take up to 10 min the first time):
@@ -362,18 +314,6 @@ Then check *Billing → Cost Explorer* a day later: it should read S$0.
 
 ---
 
-## IaC checks and the security baseline
-
-The template is validated four ways in CI: `cfn-lint` (including informational rules),
-`sam validate --lint`, `checkov` for security posture, and a custom guard that checks the
-reserved-concurrency budget across **all stages** fits the account pool — CloudFormation only
-discovers that conflict at deploy time, and only on the second stack.
-
-Checkov reports findings that are deliberate rather than accidental (no VPC, AWS-managed keys
-instead of CMKs, WAF deferred). Each one is classified and justified in
-[`infra/SECURITY_BASELINE.md`](../infra/SECURITY_BASELINE.md) — read it before answering any
-security question in the presentation.
-
 ## Troubleshooting
 
 | Symptom | Cause → fix |
@@ -393,27 +333,11 @@ security question in the presentation.
 ## Command quick-reference
 
 ```bash
-# local (no AWS) - see RUN_LOCALLY.md
-make install                # dev dependencies
-make local                  # whole backend + both apps on localhost:8000
-
-# checks (what CI runs)
-make lint test              # ruff + 35 pytest cases
-make audit                  # pip-audit dependency scan
-cfn-lint infra/template.yaml --include-checks I     # IaC lint, informational included
-checkov -f infra/template.yaml --framework cloudformation   # IaC security scan
-python scripts/check_concurrency_budget.py          # reserved concurrency fits the account
-sam validate -t infra/template.yaml --lint --region ap-southeast-1
-
-# deploy
+make lint test              # what CI runs
 make deploy-dev             # build + deploy dev
-make seed                   # demo users + stalls
+make seed                   # demo users + stalls (dev)
 make smoke                  # public endpoint check
 python scripts/integration_test.py --stack hawkerflow-dev
 make deploy-prod            # manual prod deploy (pipeline is preferred)
-
-# evidence for the report
-make loadtest               # k6 whole platform (needs -e vars, see Part 7)
-make scale-demo             # drive ONE service - independent scalability graph
-make fault-demo             # break one service - fault isolation + DLQ + recovery
+make loadtest               # k6 (needs -e vars, see Part 7)
 ```

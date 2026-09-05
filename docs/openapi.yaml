@@ -24,12 +24,12 @@ paths:
     get: {summary: Stalls owned by the caller, responses: {"200": {description: OK}}}
   /v1/orders:
     post:
-      summary: Place an order (idempotent via Idempotency-Key header)
+      summary: Queue an order (idempotent via Idempotency-Key header)
       parameters:
         - {name: Idempotency-Key, in: header, required: true, schema: {type: string}}
       responses:
-        "201": {description: Created}
-        "200": {description: Duplicate submission - original order returned}
+        "202": {description: Accepted for asynchronous processing}
+        "200": {description: Message accepted by the ingestion queue}
   /v1/orders/{orderId}:
     get: {summary: Get an order (diner or stall owner), responses: {"200": {description: OK}}}
     patch:

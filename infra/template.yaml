@@ -12,31 +12,6 @@ Parameters:
     AllowedValues: [dev, prod]
     Default: dev
 
-Mappings:
-  # Reserved concurrency is drawn from a SINGLE account-wide pool (default 1000, of which
-  # at least 100 must stay unreserved). dev + prod live in one account, so the two stacks
-  # must fit together: 150 (dev) + 600 (prod) = 750 reserved, 250 unreserved.
-  # MaximumConcurrency on an SQS event source must be <= that function's reserved concurrency.
-  StageConfig:
-    dev:
-      MerchantConcurrency: 10
-      CatalogConcurrency: 40
-      OrderingConcurrency: 50
-      DispatcherConcurrency: 20
-      NotificationConcurrency: 20
-      AnalyticsConcurrency: 10
-      NotificationMaxConcurrency: 10
-      AnalyticsMaxConcurrency: 5
-    prod:
-      MerchantConcurrency: 40
-      CatalogConcurrency: 150
-      OrderingConcurrency: 200
-      DispatcherConcurrency: 80
-      NotificationConcurrency: 80
-      AnalyticsConcurrency: 50
-      NotificationMaxConcurrency: 60
-      AnalyticsMaxConcurrency: 40
-
 Globals:
   Function:
     Runtime: python3.12
@@ -64,8 +39,6 @@ Resources:
   # ---------------- Data ----------------
   PlatformTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Delete            # practice project - teardown must be clean
-    UpdateReplacePolicy: Retain       # but never silently lose order data on a replacing update
     Properties:
       TableName: !Sub hawkerflow-${Stage}
       BillingMode: PAY_PER_REQUEST
@@ -110,50 +83,48 @@ Resources:
   # ---------------- Events ----------------
   NotificationsDLQ:
     Type: AWS::SQS::Queue
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       QueueName: !Sub hawkerflow-${Stage}-notifications-dlq
-      SqsManagedSseEnabled: true
       MessageRetentionPeriod: 1209600
   NotificationsQueue:
     Type: AWS::SQS::Queue
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       QueueName: !Sub hawkerflow-${Stage}-notifications
-      SqsManagedSseEnabled: true
       VisibilityTimeout: 60
-      MessageRetentionPeriod: 345600     # 4 days
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt NotificationsDLQ.Arn
         maxReceiveCount: 3
   AnalyticsDLQ:
     Type: AWS::SQS::Queue
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       QueueName: !Sub hawkerflow-${Stage}-analytics-dlq
-      SqsManagedSseEnabled: true
       MessageRetentionPeriod: 1209600
   AnalyticsQueue:
     Type: AWS::SQS::Queue
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       QueueName: !Sub hawkerflow-${Stage}-analytics
-      SqsManagedSseEnabled: true
       VisibilityTimeout: 60
-      MessageRetentionPeriod: 345600     # 4 days
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt AnalyticsDLQ.Arn
+        maxReceiveCount: 3
+
+  OrderIngestionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub hawkerflow-${Stage}-orders-dlq
+      MessageRetentionPeriod: 1209600
+  OrderIngestionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub hawkerflow-${Stage}-orders
+      VisibilityTimeout: 60
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt OrderIngestionDLQ.Arn
         maxReceiveCount: 3
 
   # ---------------- Identity ----------------
   UserPool:
     Type: AWS::Cognito::UserPool
-    DeletionPolicy: Delete            # practice project - clean teardown
-    UpdateReplacePolicy: Retain       # user accounts survive a replacing update
     Properties:
       UserPoolName: !Sub hawkerflow-${Stage}
       UserPoolTier: LITE
@@ -203,6 +174,62 @@ Resources:
             IdentitySource: $request.header.Authorization
         DefaultAuthorizer: CognitoJwt
 
+  ApiGatewayOrderQueueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: apigateway.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SendOrderMessages
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt OrderIngestionQueue.Arn
+
+  OrderApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref Api
+      AuthorizerType: JWT
+      IdentitySource:
+        - $request.header.Authorization
+      JwtConfiguration:
+        Audience:
+          - !Ref UserPoolClient
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+      Name: OrderCognitoJwt
+
+  OrderQueueIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationSubtype: SQS-SendMessage
+      CredentialsArn: !GetAtt ApiGatewayOrderQueueRole.Arn
+      PayloadFormatVersion: '1.0'
+      RequestParameters:
+        QueueUrl: !Ref OrderIngestionQueue
+        MessageBody: $request.body
+        MessageAttributes.userSub.DataType: String
+        MessageAttributes.userSub.StringValue: $context.authorizer.jwt.claims.sub
+        MessageAttributes.idempotencyKey.DataType: String
+        MessageAttributes.idempotencyKey.StringValue: $request.header.idempotency-key
+
+  OrderQueueRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      AuthorizationType: JWT
+      AuthorizerId: !Ref OrderApiAuthorizer
+      RouteKey: 'POST /v1/orders'
+      Target: !Join ['/', [integrations, !Ref OrderQueueIntegration]]
+
   # ---------------- Shared layer ----------------
   SharedLayer:
     Type: AWS::Serverless::LayerVersion
@@ -219,8 +246,6 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-merchant
-      # Bulkhead: low-volume onboarding
-      ReservedConcurrentExecutions: !FindInMap [StageConfig, !Ref Stage, MerchantConcurrency]
       CodeUri: ../services/merchant/src
       Handler: merchant_service.handler.lambda_handler
       Policies:
@@ -257,8 +282,6 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-catalog
-      # Bulkhead: read-heavy browsing - capped so a browse spike cannot starve the write path
-      ReservedConcurrentExecutions: !FindInMap [StageConfig, !Ref Stage, CatalogConcurrency]
       CodeUri: ../services/catalog/src
       Handler: catalog_service.handler.lambda_handler
       Policies:
@@ -304,8 +327,6 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-ordering
-      # Bulkhead: protected floor for the revenue-critical write path
-      ReservedConcurrentExecutions: !FindInMap [StageConfig, !Ref Stage, OrderingConcurrency]
       CodeUri: ../services/ordering/src
       Handler: ordering_service.handler.lambda_handler
       Policies:
@@ -322,12 +343,15 @@ Resources:
         - SSMParameterReadPolicy:
             ParameterName: !Sub hawkerflow/${Stage}/order-ttl-days
       Events:
-        PlaceOrder:
-          Type: HttpApi
+        OrderMessages:
+          Type: SQS
           Properties:
-            ApiId: !Ref Api
-            Method: POST
-            Path: /v1/orders
+            Queue: !GetAtt OrderIngestionQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            ScalingConfig:
+              MaximumConcurrency: 25
         GetOrder:
           Type: HttpApi
           Properties:
@@ -357,8 +381,6 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-dispatcher
-      # Bulkhead: outbox must never be starved - events would lag
-      ReservedConcurrentExecutions: !FindInMap [StageConfig, !Ref Stage, DispatcherConcurrency]
       CodeUri: ../services/dispatcher/src
       Handler: dispatcher_service.handler.lambda_handler
       Policies:
@@ -372,17 +394,11 @@ Resources:
             StartingPosition: LATEST
             BatchSize: 25
             MaximumBatchingWindowInSeconds: 1
-            # Shards are processed serially by default; fan out across partition keys
-            ParallelizationFactor: 10
-            BisectBatchOnFunctionError: true
-            MaximumRetryAttempts: 3
 
   NotificationFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-notification
-      # Bulkhead: async consumer
-      ReservedConcurrentExecutions: !FindInMap [StageConfig, !Ref Stage, NotificationConcurrency]
       CodeUri: ../services/notification/src
       Handler: notification_service.handler.lambda_handler
       Policies:
@@ -397,8 +413,6 @@ Resources:
           Properties:
             Queue: !GetAtt NotificationsQueue.Arn
             BatchSize: 10
-            ScalingConfig:
-              MaximumConcurrency: !FindInMap [StageConfig, !Ref Stage, NotificationMaxConcurrency]
         MyNotifications:
           Type: HttpApi
           Properties:
@@ -410,8 +424,6 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-analytics
-      # Bulkhead: async consumer, tolerant of delay
-      ReservedConcurrentExecutions: !FindInMap [StageConfig, !Ref Stage, AnalyticsConcurrency]
       CodeUri: ../services/analytics/src
       Handler: analytics_service.handler.lambda_handler
       Policies:
@@ -426,8 +438,6 @@ Resources:
           Properties:
             Queue: !GetAtt AnalyticsQueue.Arn
             BatchSize: 10
-            ScalingConfig:
-              MaximumConcurrency: !FindInMap [StageConfig, !Ref Stage, AnalyticsMaxConcurrency]
         StallAnalytics:
           Type: HttpApi
           Properties:
@@ -438,43 +448,31 @@ Resources:
   # ---------------- Observability: 14-day log retention ----------------
   MerchantLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-merchant
       RetentionInDays: 14
   CatalogLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-catalog
       RetentionInDays: 14
   OrderingLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-ordering
       RetentionInDays: 14
   DispatcherLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-dispatcher
       RetentionInDays: 14
   NotificationLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-notification
       RetentionInDays: 14
   AnalyticsLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-analytics
       RetentionInDays: 14
@@ -561,32 +559,16 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
 
-  DispatcherIteratorAgeAlarm:
+  OrderIngestionDLQAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub hawkerflow-${Stage}-dispatcher-lag
-      AlarmDescription: Event pipeline falling behind - leading indicator of write-path saturation
-      Namespace: AWS/Lambda
-      MetricName: IteratorAge
+      AlarmName: !Sub hawkerflow-${Stage}-orders-dlq
+      AlarmDescription: Orders that could not be processed after retries
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
       Dimensions:
-        - {Name: FunctionName, Value: !Ref DispatcherFunction}
+        - {Name: QueueName, Value: !GetAtt OrderIngestionDLQ.QueueName}
       Statistic: Maximum
-      Period: 60
-      EvaluationPeriods: 2
-      Threshold: 60000          # 60 s behind the stream
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-
-  OrderingThrottleAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub hawkerflow-${Stage}-ordering-throttled
-      AlarmDescription: Ordering hit its reserved concurrency ceiling - scale the bulkhead
-      Namespace: AWS/Lambda
-      MetricName: Throttles
-      Dimensions:
-        - {Name: FunctionName, Value: !Ref OrderingFunction}
-      Statistic: Sum
       Period: 60
       EvaluationPeriods: 1
       Threshold: 1
@@ -596,8 +578,6 @@ Resources:
   # ---------------- Web hosting ----------------
   WebBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub hawkerflow-${Stage}-web-${AWS::AccountId}
       PublicAccessBlockConfiguration:
@@ -605,8 +585,6 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}

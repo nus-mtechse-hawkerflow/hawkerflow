@@ -1,0 +1,79 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write   # OIDC federation to AWS - no stored access keys
+  contents: read
+
+concurrency: deploy
+
+env:
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: sam build -t infra/template.yaml
+      - run: sam deploy --config-file infra/samconfig.toml --config-env dev --no-fail-on-empty-changeset
+      - name: Smoke test
+        run: |
+          pip install boto3
+          python scripts/smoke.py --stack hawkerflow-dev
+      - name: Integration test (full order lifecycle + async pipeline)
+        # requires one-time seeding of dev: python scripts/seed_data.py --stack hawkerflow-dev
+        run: python scripts/integration_test.py --stack hawkerflow-dev
+      - name: Resolve dev API URL for DAST
+        run: |
+          echo "DEV_API_URL=$(aws cloudformation describe-stacks --stack-name hawkerflow-dev \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)" >> "$GITHUB_ENV"
+      - name: OWASP ZAP baseline scan (DAST gate before promotion)
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ env.DEV_API_URL }}/v1/centres/maxwell/stalls
+          allow_issue_writing: false
+
+  deploy-prod:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: production   # protect this environment in GitHub -> manual approval gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: sam build -t infra/template.yaml
+      - run: sam deploy --config-file infra/samconfig.toml --config-env prod --no-fail-on-empty-changeset
+      - name: Smoke test
+        run: |
+          pip install boto3
+          python scripts/smoke.py --stack hawkerflow-prod
+      - name: Bake window - fail the release if any alarm fires
+        run: |
+          echo "baking for 60s under CloudWatch alarms..."
+          sleep 60
+          FIRING=$(aws cloudwatch describe-alarms --alarm-name-prefix hawkerflow-prod \
+            --state-value ALARM --query 'length(MetricAlarms)' --output text)
+          echo "alarms firing: $FIRING"
+          test "$FIRING" -eq 0

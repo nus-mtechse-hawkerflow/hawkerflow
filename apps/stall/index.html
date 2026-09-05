@@ -5,132 +5,70 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HawkerFlow - Stall Portal</title>
 <style>
-  :root {
-    --accent:#1fa956; --accent-ink:#ffffff; --accent-tint:#e9f8ee; --accent-dark:#188341;
-    --bg:#f5f5f7; --surface:#ffffff; --surface-2:#f5f5f7;
-    --ink:#1d1d1f; --ink-2:#6e6e73; --ink-3:#98989d;
-    --hairline:rgba(0,0,0,.08); --danger:#ff3b30; --success:#26a65b; --warning:#b5820a;
-    --radius-lg:20px; --radius-md:14px; --radius-sm:10px; --radius-pill:999px;
-    --shadow-card:0 1px 2px rgba(0,0,0,.04), 0 10px 28px rgba(0,0,0,.06);
-    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Arial,sans-serif;
-  }
+  :root { --brand:#0f6e56; --bg:#f4f8f6; --card:#fff; --ink:#22302b; --muted:#6d7a74; }
   * { box-sizing:border-box; }
-  html { -webkit-font-smoothing:antialiased; }
-  body { margin:0; font-family:var(--font); background:var(--bg); color:var(--ink); }
-  header {
-    position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; align-items:center;
-    padding:13px 20px; background:rgba(245,245,247,.78); backdrop-filter:saturate(180%) blur(20px);
-    -webkit-backdrop-filter:saturate(180%) blur(20px); border-bottom:.5px solid var(--hairline);
-  }
-  .brand { display:flex; align-items:center; gap:9px; font-weight:600; font-size:1.02rem; letter-spacing:-.01em; }
-  .brand .dot { width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--accent-tint); }
-  #who { color:var(--ink-2); font-size:.82rem; font-weight:500; }
-  main { max-width:760px; margin:0 auto; padding:20px 16px 64px; }
-
-  .card { background:var(--surface); border-radius:var(--radius-lg); padding:20px; margin:14px 0; box-shadow:var(--shadow-card); }
-  .card h2 { margin:0; font-size:1.02rem; font-weight:600; letter-spacing:-.01em; }
-  .card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px; flex-wrap:wrap; }
-  .muted { color:var(--ink-2); font-size:.85rem; }
-  .hidden { display:none !important; }
-  ul { list-style:none; padding:0; margin:0; }
-  li { padding:13px 0; border-bottom:.5px solid var(--hairline); }
-  li:last-child { border-bottom:0; }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--brand); color:#fff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { margin:0; font-size:1.15rem; }
+  main { max-width:860px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border-radius:12px; padding:16px; margin:12px 0; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  button { background:var(--brand); color:#fff; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; font-size:.9rem; }
+  button.ghost { background:#e2ede8; color:var(--brand); }
+  input, select { padding:8px 10px; border:1px solid #ccd8d2; border-radius:8px; margin:4px 4px 10px 0; font-size:.95rem; }
   .row { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
-
-  button { font-family:inherit; border:0; cursor:pointer; font-size:.88rem; font-weight:600;
-    transition:transform .12s ease, opacity .15s ease, background .15s ease; }
-  button:active { transform:scale(.97); }
-  button:disabled { opacity:.4; cursor:default; transform:none; }
-  .btn-primary { background:var(--accent); color:var(--accent-ink); border-radius:var(--radius-pill); padding:9px 16px;
-    box-shadow:0 1px 2px rgba(0,0,0,.08); }
-  .btn-primary:hover:not(:disabled) { background:var(--accent-dark); }
-  .btn-danger { background:#fff0ee; color:var(--danger); border-radius:var(--radius-pill); padding:9px 16px; }
-  .btn-danger:hover { background:#ffe2de; }
-  .btn-ghost { background:var(--surface-2); color:var(--ink); border-radius:var(--radius-pill); padding:8px 14px; font-size:.85rem; }
-  .btn-ghost:hover { background:#eceeef; }
-
-  input, select {
-    padding:10px 12px; margin:4px 8px 10px 0; font-size:.9rem; font-family:inherit;
-    background:var(--surface-2); border:1px solid transparent; border-radius:var(--radius-md); color:var(--ink);
-  }
-  input:focus, select:focus { outline:none; border-color:var(--accent); background:var(--surface); }
-  select { appearance:none; -webkit-appearance:none; padding-right:30px;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236e6e73'><path d='M5.5 7.5l4.5 4.5 4.5-4.5' stroke='%236e6e73' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-    background-repeat:no-repeat; background-position:right 10px center; }
-  label.checkline { display:inline-flex; align-items:center; gap:6px; font-size:.9rem; color:var(--ink-2); margin:4px 8px 10px 0; }
-  label.checkline input[type=checkbox] { margin:0; width:auto; }
-
-  .badge { padding:3px 11px; border-radius:var(--radius-pill); font-size:.72rem; font-weight:700;
-    letter-spacing:.02em; text-transform:uppercase; background:var(--accent-tint); color:var(--accent-dark); }
-  .badge.st-PLACED { background:#eef2ff; color:#3a4bc9; }
-  .badge.st-ACCEPTED, .badge.st-PREPARING { background:#fff6df; color:var(--warning); }
-  .badge.st-READY { background:var(--accent-tint); color:var(--accent-dark); }
-
-  details { margin:10px 0 4px; }
-  details summary { cursor:pointer; color:var(--ink-2); font-size:.85rem; font-weight:500; list-style:none; }
-  details summary::-webkit-details-marker { display:none; }
-  details summary::before { content:"▸ "; color:var(--ink-3); }
-  details[open] summary::before { content:"▾ "; }
-  details .panel { padding-top:10px; }
-
-  table { width:100%; border-collapse:collapse; font-size:.87rem; }
-  td, th { text-align:left; padding:9px 8px; border-bottom:.5px solid var(--hairline); }
-  th { color:var(--ink-2); font-weight:600; font-size:.76rem; text-transform:uppercase; letter-spacing:.03em; }
-  tr:last-child td { border-bottom:0; }
+  .muted { color:var(--muted); font-size:.85rem; }
+  .badge { padding:2px 10px; border-radius:999px; font-size:.75rem; background:#e2ede8; color:var(--brand); font-weight:600; }
+  .hidden { display:none; }
+  ul { list-style:none; padding:0; margin:0; }
+  li { padding:10px 0; border-bottom:1px solid #edf2ef; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  td, th { text-align:left; padding:6px 8px; border-bottom:1px solid #edf2ef; }
 </style>
 </head>
 <body>
-<header>
-  <div class="brand"><span class="dot"></span>HawkerFlow <span class="muted" style="font-weight:500">Stall Portal</span></div>
-  <div id="who" class="muted"></div>
-</header>
+<header><h1>HawkerFlow - Stall Portal</h1><div id="who" class="muted" style="color:#cdeade"></div></header>
 <main>
   <script>
     const CONFIG = {
-      API_URL: "REPLACE_WITH_ApiUrl",
-      CLIENT_ID: "REPLACE_WITH_UserPoolClientId",
+      API_URL: "https://a4xonfevzl.execute-api.ap-southeast-1.amazonaws.com/prod",
+      CLIENT_ID: "5nsdo9gvep5eh50iamgcc1rlh6",
       REGION: "ap-southeast-1",
     };
   </script>
 
   <section id="login" class="card">
-    <h2 style="margin-bottom:12px">Owner sign in</h2>
-    <input id="email" type="email" placeholder="Email" value="owner@hawkerflow.demo" style="display:block;width:100%">
-    <input id="password" type="password" placeholder="Password" value="HawkerDemo1!" style="display:block;width:100%">
-    <button class="btn-primary" onclick="login()" style="width:100%;padding:11px;margin-top:4px">Sign in</button>
-    <p id="loginError" class="muted" style="color:var(--danger)"></p>
+    <h2>Owner sign in</h2>
+    <input id="email" type="email" placeholder="email" value="owner@hawkerflow.demo">
+    <input id="password" type="password" placeholder="password" value="HawkerDemo1!">
+    <button onclick="login()">Sign in</button>
+    <p id="loginError" class="muted"></p>
   </section>
 
   <section id="app" class="hidden">
     <div class="card">
-      <div class="card-head"><h2>My stalls</h2><select id="stallSelect" onchange="selectStall()"></select></div>
-      <details><summary>Register a new stall</summary>
-        <div class="panel">
-          <input id="newName" placeholder="Stall name"><input id="newCentre" placeholder="Centre id (e.g. maxwell)">
-          <button class="btn-ghost" onclick="createStall()">Create</button>
-        </div>
+      <div class="row"><h2 style="margin:0">My stalls</h2><select id="stallSelect" onchange="selectStall()"></select></div>
+      <details><summary class="muted">Register a new stall</summary>
+        <input id="newName" placeholder="stall name"><input id="newCentre" placeholder="centre id (e.g. maxwell)">
+        <button onclick="createStall()">Create</button>
       </details>
-      <p style="margin:14px 0 0"><button class="btn-ghost" onclick="toggleStatus()" id="statusBtn"></button></p>
+      <p><button class="ghost" onclick="toggleStatus()" id="statusBtn"></button></p>
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>Order queue</h2><span class="muted">Auto-refreshes</span></div>
+      <h2>Order queue <span class="muted">(auto-refreshes)</span></h2>
       <ul id="queue"><li class="muted">-</li></ul>
     </div>
 
     <div class="card">
-      <h2 style="margin-bottom:6px">Menu</h2>
+      <h2>Menu</h2>
       <ul id="menu"></ul>
-      <div style="margin-top:12px; padding-top:14px; border-top:.5px solid var(--hairline)">
-        <input id="itemId" placeholder="Item id (e.g. cr)"><input id="itemName" placeholder="Name">
-        <input id="itemPrice" placeholder="Price in cents" type="number" style="width:150px">
-        <label class="checkline"><input id="itemAvail" type="checkbox" checked>Available</label>
-        <button class="btn-primary" onclick="saveItem()">Save item</button>
-      </div>
+      <input id="itemId" placeholder="item id (e.g. cr)"><input id="itemName" placeholder="name">
+      <input id="itemPrice" placeholder="price in cents" type="number"><label><input id="itemAvail" type="checkbox" checked> available</label>
+      <button onclick="saveItem()">Save item</button>
     </div>
 
     <div class="card">
-      <h2 style="margin-bottom:10px">Analytics <span class="muted" style="font-weight:400">(last 7 days)</span></h2>
+      <h2>Analytics (last 7 days)</h2>
       <table id="analytics"><tr><td class="muted">-</td></tr></table>
     </div>
   </section>
@@ -138,24 +76,11 @@
 <script>
 let token = sessionStorage.getItem("ownerIdToken") || null;
 let stalls = [], stall = null;
-
-// local demo launcher (/demo/) passes ?token=local-owner to skip the login form
-{
-  const demoToken = new URLSearchParams(location.search).get("token");
-  if (demoToken) { token = demoToken; sessionStorage.setItem("ownerIdToken", token); }
-}
 const $ = (id) => document.getElementById(id);
 const money = (c) => "$" + (c / 100).toFixed(2);
 const NEXT_ACTIONS = { PLACED: ["accept", "reject"], ACCEPTED: ["preparing"], PREPARING: ["ready"], READY: ["collected"] };
 
-function emailFromToken(t) {
-  try { return JSON.parse(atob(t.split(".")[1])).email || ""; } catch { return "local demo"; }
-}
-
 async function login() {
-  if (CONFIG.CLIENT_ID === "LOCAL") {           // local dev server - no Cognito
-    token = "local-owner"; sessionStorage.setItem("ownerIdToken", token); boot(); return;
-  }
   const res = await fetch(`https://cognito-idp.${CONFIG.REGION}.amazonaws.com/`, {
     method: "POST",
     headers: { "content-type": "application/x-amz-json-1.1", "x-amz-target": "AWSCognitoIdentityProviderService.InitiateAuth" },
@@ -178,7 +103,7 @@ async function api(path, opts = {}) {
 
 async function boot() {
   $("login").classList.add("hidden"); $("app").classList.remove("hidden");
-  $("who").textContent = emailFromToken(token);
+  $("who").textContent = JSON.parse(atob(token.split(".")[1])).email || "";
   const { body } = await api("/v1/me/stalls");
   stalls = body.stalls || [];
   $("stallSelect").innerHTML = stalls.map((s) => `<option value="${s.stallId}">${s.name}</option>`).join("");
@@ -188,7 +113,7 @@ async function boot() {
 
 function selectStall() {
   stall = stalls.find((s) => s.stallId === $("stallSelect").value) || stalls[0];
-  $("statusBtn").textContent = stall.status === "OPEN" ? "Set closed" : "Set open";
+  $("statusBtn").textContent = stall.status === "OPEN" ? "Set CLOSED" : "Set OPEN";
   loadQueue(); loadMenu(); loadAnalytics();
 }
 
@@ -201,7 +126,7 @@ async function createStall() {
 async function toggleStatus() {
   const next = stall.status === "OPEN" ? "CLOSED" : "OPEN";
   const { body } = await api(`/v1/stalls/${stall.stallId}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
-  stall.status = body.status; $("statusBtn").textContent = stall.status === "OPEN" ? "Set closed" : "Set open";
+  stall.status = body.status; $("statusBtn").textContent = stall.status === "OPEN" ? "Set CLOSED" : "Set OPEN";
 }
 
 async function loadQueue() {
@@ -209,9 +134,9 @@ async function loadQueue() {
   const active = (body.orders || []).filter((o) => NEXT_ACTIONS[o.status]);
   $("queue").innerHTML = active.map((o) =>
     `<li class="row"><span>${o.lines.map((l) => l.qty + "x " + l.name).join(", ")}<br>
-     <span class="muted">${money(o.totalCents)} · ${o.createdAt}</span></span>
-     <span class="row" style="gap:8px; width:auto"><span class="badge st-${o.status}">${o.status}</span>
-     ${NEXT_ACTIONS[o.status].map((a) => `<button class="${a === "reject" ? "btn-danger" : "btn-primary"}" onclick="act('${o.orderId}','${a}')">${a}</button>`).join(" ")}</span></li>`).join("")
+     <span class="muted">${money(o.totalCents)} - ${o.createdAt}</span></span>
+     <span><span class="badge">${o.status}</span>
+     ${NEXT_ACTIONS[o.status].map((a) => `<button onclick="act('${o.orderId}','${a}')">${a}</button>`).join(" ")}</span></li>`).join("")
     || '<li class="muted">No active orders.</li>';
 }
 
@@ -224,8 +149,8 @@ async function act(orderId, action) {
 async function loadMenu() {
   const { body } = await api(`/v1/stalls/${stall.stallId}/menu`);
   $("menu").innerHTML = (body.items || []).map((i) =>
-    `<li class="row"><span>${i.name} <span class="muted">${money(i.priceCents)} · ${i.available ? "available" : "sold out"}</span></span>
-     <button class="btn-ghost" onclick="fillItem('${i.itemId}','${i.name.replace(/'/g, "")}',${i.priceCents},${i.available})">Edit</button></li>`).join("")
+    `<li class="row"><span>${i.name} <span class="muted">${money(i.priceCents)} - ${i.available ? "available" : "sold out"}</span></span>
+     <button class="ghost" onclick="fillItem('${i.itemId}','${i.name.replace(/'/g, "")}',${i.priceCents},${i.available})">Edit</button></li>`).join("")
     || '<li class="muted">No items yet.</li>';
 }
 

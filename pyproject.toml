@@ -13,7 +13,7 @@ pythonpath = [
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-exclude = [".aws-sam", ".venv"]
+exclude = [".aws-sam"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]
