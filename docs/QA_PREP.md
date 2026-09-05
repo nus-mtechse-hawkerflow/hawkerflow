@@ -118,3 +118,5 @@ bake window.
 | STRIDE / DREAD | Threat taxonomy / qualitative risk scoring (likelihood × impact) |
 | TTL | DynamoDB per-item expiry (orders 90 days, via SSM-configurable parameter) |
 | USL | Universal Scalability Law — fits contention (σ) and crosstalk (κ) from stepped load tests |
+
+<!-- test: branch-protection verification, will be closed without merging -->
