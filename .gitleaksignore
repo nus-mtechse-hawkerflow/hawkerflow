@@ -1,0 +1,8 @@
+# False positives from the generic curl-auth-header rule: these are the
+# literal placeholder tokens ("local-diner" / "local-owner") accepted only
+# by scripts/local_server.py for local dev — not real credentials.
+600c7c073be17a212f4dee487d50861fb1550e77:docs/RUN_LOCALLY.md:curl-auth-header:203
+600c7c073be17a212f4dee487d50861fb1550e77:docs/RUN_LOCALLY.md:curl-auth-header:209
+600c7c073be17a212f4dee487d50861fb1550e77:docs/RUN_LOCALLY.md:curl-auth-header:220
+600c7c073be17a212f4dee487d50861fb1550e77:docs/SETUP.md:curl-auth-header:109
+600c7c073be17a212f4dee487d50861fb1550e77:docs/SETUP.md:curl-auth-header:111
