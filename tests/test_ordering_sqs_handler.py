@@ -3,16 +3,12 @@ import json
 from ordering_service import handler
 
 
-def _event(body, message_id="message-1"):
+def _event(envelope, message_id="message-1"):
     return {
         "Records": [
             {
                 "messageId": message_id,
-                "body": json.dumps(body),
-                "messageAttributes": {
-                    "userSub": {"stringValue": "diner-sub"},
-                    "idempotencyKey": {"stringValue": "key-1"},
-                },
+                "body": json.dumps(envelope),
             }
         ]
     }
@@ -27,7 +23,13 @@ def test_queue_message_creates_an_order(monkeypatch, stall, menu):
         lambda order: created.append(order) or (order, True),
     )
     result = handler.lambda_handler(
-        _event({"stallId": "stall-1", "items": [{"itemId": "cr", "qty": 1}]}),
+        _event(
+            {
+                "userSub": "diner-sub",
+                "idempotencyKey": "key-1",
+                "order": {"stallId": "stall-1", "items": [{"itemId": "cr", "qty": 1}]},
+            }
+        ),
         None,
     )
     assert result == {"batchItemFailures": []}
@@ -46,7 +48,6 @@ def test_invalid_queue_message_is_reported_for_retry(monkeypatch):
                 {
                     "messageId": "bad-1",
                     "body": "not-json",
-                    "messageAttributes": {},
                 }
             ]
         },

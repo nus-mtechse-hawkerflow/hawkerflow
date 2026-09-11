@@ -4,6 +4,7 @@ pythonpath = [
   "services/shared/python",
   "services/merchant/src",
   "services/catalog/src",
+  "services/order_intake/src",
   "services/ordering/src",
   "services/dispatcher/src",
   "services/notification/src",
