@@ -38,6 +38,16 @@ Prerequisites: an AWS account (new accounts get **US$100–200 credits**), AWS C
 [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html),
 Python 3.12.
 
+On Windows, run this preflight from PowerShell:
+
+```powershell
+py -3.12 --version
+.\scripts\bootstrap.ps1
+sam validate -t infra/template.yaml --lint --region ap-southeast-1
+sam build -t infra/template.yaml
+aws sts get-caller-identity --region ap-southeast-1
+```
+
 ```bash
 # 0. Guardrail FIRST - S$5 budget alarm (email-alert version: docs/SETUP.md Part 1)
 aws budgets create-budget --account-id <ACCOUNT_ID> --budget \

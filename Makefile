@@ -1,7 +1,9 @@
+PYTHON ?= python
+
 .PHONY: install lint test audit build deploy-dev deploy-prod seed smoke loadtest
 
 install:
-	pip install -r requirements-dev.txt
+	$(PYTHON) -m pip install -r requirements-dev.txt
 
 lint:
 	ruff check .
@@ -22,10 +24,10 @@ deploy-prod: build
 	sam deploy --config-file infra/samconfig.toml --config-env prod
 
 seed:
-	python scripts/seed_data.py --stack hawkerflow-dev
+	$(PYTHON) scripts/seed_data.py --stack hawkerflow-dev
 
 smoke:
-	python scripts/smoke.py --stack hawkerflow-dev
+	$(PYTHON) scripts/smoke.py --stack hawkerflow-dev
 
 loadtest:
 	k6 run loadtest/order_flow.js
