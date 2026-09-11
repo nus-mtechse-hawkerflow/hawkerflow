@@ -70,16 +70,6 @@ Use **one AWS account for the whole team** — one free-credit pool, one bill to
    - **AWS SAM CLI** — <https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html>
    - **k6** (for Part 7): macOS `brew install k6` · Windows `winget install k6 --source winget` · Linux: see <https://k6.io/docs/get-started/installation/>
 
-   On Windows, run this preflight from PowerShell:
-
-   ```powershell
-   py -3.12 --version
-   .\scripts\bootstrap.ps1
-   sam validate -t infra/template.yaml --lint --region ap-southeast-1
-   sam build -t infra/template.yaml
-   aws sts get-caller-identity --region ap-southeast-1
-   ```
-
 2. **Get the code** (unzip `hawkerflow-repo.zip`, or clone once Part 5 is done):
 
    ```bash
@@ -88,6 +78,16 @@ Use **one AWS account for the whole team** — one free-credit pool, one bill to
    make lint           # ✅ "All checks passed!"
    make test           # ✅ "35 passed"
    cfn-lint infra/template.yaml   # ✅ no output = template valid
+   ```
+
+   On Windows, run this preflight from PowerShell after `cd hawkerflow`:
+
+   ```powershell
+   py -3.12 --version
+   .\scripts\bootstrap.ps1
+   sam validate -t infra/template.yaml --lint --region ap-southeast-1
+   sam build -t infra/template.yaml
+   aws sts get-caller-identity --region ap-southeast-1
    ```
 
    If all three are green, your machine matches CI exactly.
