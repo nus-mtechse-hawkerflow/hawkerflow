@@ -29,10 +29,14 @@ def _route(event):
     if not idempotency_key:
         raise ApiError(400, "idempotency-key is required")
 
+    order = json_body(event)
+    if not isinstance(order, dict):
+        raise ApiError(400, "order body must be a JSON object")
+
     envelope = {
         "userSub": sub(event),
         "idempotencyKey": idempotency_key,
-        "order": json_body(event),
+        "order": order,
     }
     sqs.send_message(
         QueueUrl=os.environ["ORDER_INGESTION_QUEUE_URL"],
