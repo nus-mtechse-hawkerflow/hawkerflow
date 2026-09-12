@@ -190,6 +190,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-merchant
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref MerchantErrorsAlarm
       CodeUri: ../services/merchant/src
       Handler: merchant_service.handler.lambda_handler
       Policies:
@@ -226,6 +231,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-catalog
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref CatalogErrorsAlarm
       CodeUri: ../services/catalog/src
       Handler: catalog_service.handler.lambda_handler
       Policies:
@@ -271,11 +281,18 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-order-intake
+      AutoPublishAlias: live
+      AutoPublishAliasAllProperties: true
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref OrderIntakeErrorsAlarm
       CodeUri: ../services/order_intake/src
       Handler: order_intake_service.handler.lambda_handler
       Environment:
         Variables:
           ORDER_INGESTION_QUEUE_URL: !Ref OrderIngestionQueue
+          CANARY_TEST_MARKER: "2026-09-12-order-intake"
       Policies:
         - SQSSendMessagePolicy: {QueueName: !GetAtt OrderIngestionQueue.QueueName}
       Events:
@@ -290,6 +307,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-ordering
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref OrderingErrorsAlarm
       CodeUri: ../services/ordering/src
       Handler: ordering_service.handler.lambda_handler
       Policies:
@@ -344,6 +366,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-dispatcher
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref DispatcherErrorsAlarm
       CodeUri: ../services/dispatcher/src
       Handler: dispatcher_service.handler.lambda_handler
       Policies:
@@ -362,6 +389,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-notification
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref NotificationErrorsAlarm
       CodeUri: ../services/notification/src
       Handler: notification_service.handler.lambda_handler
       Policies:
@@ -387,6 +419,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub hawkerflow-${Stage}-analytics
+      AutoPublishAlias: live
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref AnalyticsErrorsAlarm
       CodeUri: ../services/analytics/src
       Handler: analytics_service.handler.lambda_handler
       Policies:
@@ -440,7 +477,55 @@ Resources:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-analytics
       RetentionInDays: 14
 
-  # ---------------- Observability: alarms (5 per stage, within the 10 free) ----------------
+  # ---------------- Observability: alarms (11 per stage) ----------------
+  MerchantErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-merchant-errors
+      AlarmDescription: Errors in the merchant service canary
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref MerchantFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  CatalogErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-catalog-errors
+      AlarmDescription: Errors in the catalog service canary
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref CatalogFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  OrderIntakeErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-order-intake-errors
+      AlarmDescription: Errors in the order intake canary
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref OrderIntakeFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
   Api5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -515,6 +600,38 @@ Resources:
       MetricName: Errors
       Dimensions:
         - {Name: FunctionName, Value: !Ref DispatcherFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  NotificationErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-notification-errors
+      AlarmDescription: Errors in the notification service canary
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref NotificationFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  AnalyticsErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-analytics-errors
+      AlarmDescription: Errors in the analytics service canary
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref AnalyticsFunction}
       Statistic: Sum
       Period: 60
       EvaluationPeriods: 1
