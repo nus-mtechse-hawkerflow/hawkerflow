@@ -29,6 +29,9 @@ def _route(event):
     if not idempotency_key:
         raise ApiError(400, "idempotency-key is required")
 
+    if event.get("body") in (None, ""):
+        raise ApiError(400, "order body is required")
+
     order = json_body(event)
     if not isinstance(order, dict):
         raise ApiError(400, "order body must be a JSON object")
