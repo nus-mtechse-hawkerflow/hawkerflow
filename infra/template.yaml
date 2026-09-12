@@ -174,62 +174,6 @@ Resources:
             IdentitySource: $request.header.Authorization
         DefaultAuthorizer: CognitoJwt
 
-  ApiGatewayOrderQueueRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal: {Service: apigateway.amazonaws.com}
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: SendOrderMessages
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: sqs:SendMessage
-                Resource: !GetAtt OrderIngestionQueue.Arn
-
-  OrderApiAuthorizer:
-    Type: AWS::ApiGatewayV2::Authorizer
-    Properties:
-      ApiId: !Ref Api
-      AuthorizerType: JWT
-      IdentitySource:
-        - $request.header.Authorization
-      JwtConfiguration:
-        Audience:
-          - !Ref UserPoolClient
-        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
-      Name: OrderCognitoJwt
-
-  OrderQueueIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref Api
-      IntegrationType: AWS_PROXY
-      IntegrationSubtype: SQS-SendMessage
-      CredentialsArn: !GetAtt ApiGatewayOrderQueueRole.Arn
-      PayloadFormatVersion: '1.0'
-      RequestParameters:
-        QueueUrl: !Ref OrderIngestionQueue
-        MessageBody: $request.body
-        MessageAttributes.userSub.DataType: String
-        MessageAttributes.userSub.StringValue: $context.authorizer.jwt.claims.sub
-        MessageAttributes.idempotencyKey.DataType: String
-        MessageAttributes.idempotencyKey.StringValue: $request.header.idempotency-key
-
-  OrderQueueRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref Api
-      AuthorizationType: JWT
-      AuthorizerId: !Ref OrderApiAuthorizer
-      RouteKey: 'POST /v1/orders'
-      Target: !Join ['/', [integrations, !Ref OrderQueueIntegration]]
-
   # ---------------- Shared layer ----------------
   SharedLayer:
     Type: AWS::Serverless::LayerVersion
@@ -322,6 +266,25 @@ Resources:
             ApiId: !Ref Api
             Method: PUT
             Path: /v1/stalls/{stallId}/menu/{itemId}
+
+  OrderIntakeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub hawkerflow-${Stage}-order-intake
+      CodeUri: ../services/order_intake/src
+      Handler: order_intake_service.handler.lambda_handler
+      Environment:
+        Variables:
+          ORDER_INGESTION_QUEUE_URL: !Ref OrderIngestionQueue
+      Policies:
+        - SQSSendMessagePolicy: {QueueName: !GetAtt OrderIngestionQueue.QueueName}
+      Events:
+        SubmitOrder:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Method: POST
+            Path: /v1/orders
 
   OrderingFunction:
     Type: AWS::Serverless::Function

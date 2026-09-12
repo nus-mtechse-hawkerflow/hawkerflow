@@ -80,6 +80,16 @@ Use **one AWS account for the whole team** — one free-credit pool, one bill to
    cfn-lint infra/template.yaml   # ✅ no output = template valid
    ```
 
+   On Windows, run this preflight from PowerShell after `cd hawkerflow`:
+
+   ```powershell
+   py -3.12 --version
+   .\scripts\bootstrap.ps1
+   sam validate -t infra/template.yaml --lint --region ap-southeast-1
+   sam build -t infra/template.yaml
+   aws sts get-caller-identity --region ap-southeast-1
+   ```
+
    If all three are green, your machine matches CI exactly.
 
 ---

@@ -41,14 +41,14 @@ def _process_queue(event):
     failures = []
     for record in event["Records"]:
         try:
-            attributes = record.get("messageAttributes", {})
-            user = attributes["userSub"]["stringValue"]
-            idempotency_key = attributes["idempotencyKey"]["stringValue"]
-            body = json.loads(record["body"])
-            stall_id = body.get("stallId") or ""
+            envelope = json.loads(record["body"])
+            user = envelope["userSub"]
+            idempotency_key = envelope["idempotencyKey"]
+            order_request = envelope["order"]
+            stall_id = order_request.get("stallId") or ""
             stall, menu = repo.get_stall_and_menu(stall_id)
             order = domain.build_order(
-                user, stall, menu, body.get("items"), idempotency_key, _now_iso()
+                user, stall, menu, order_request.get("items"), idempotency_key, _now_iso()
             )
             repo.create_order(order)
         except Exception:  # noqa: BLE001
