@@ -1,5 +1,3 @@
-from pydantic import BaseModel
-
 from .user_service import UserService
 
 

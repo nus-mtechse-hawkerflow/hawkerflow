@@ -18,7 +18,7 @@ class UserRepository:
             )
 
             return {
-                "user_registration": user.model_dump(),
+                "customer": user.model_dump(),
                 "created": True
             }
 
@@ -26,7 +26,7 @@ class UserRepository:
             error_code = exc.response['Error']['Code']
             if error_code == 'ConditionalCheckFailedException':
                 return {
-                    "user_registration": user,
+                    "customer": user,
                     "created": False
                 }
 
