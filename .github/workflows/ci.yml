@@ -47,7 +47,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install bandit
-      - run: bandit -r . -x .venv
+      - run: bandit -r . -c .bandit
 
   gitleaks:
     runs-on: ubuntu-latest
