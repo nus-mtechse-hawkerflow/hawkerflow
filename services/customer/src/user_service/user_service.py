@@ -1,21 +1,12 @@
-from datetime import datetime, timezone
-
-from .user_repository import UserRepository
-from .user_model import User
+from models.customer_details import CustomerDetails
+from repository.customer_repo import CustomerRepo
+from entities.customer import Customer
 
 
 class UserService:
+    def __init__(self, user_repo: CustomerRepo):
+        self._repository = user_repo
 
-    def __init__(self):
-        self._repository = UserRepository()
 
-    def ensure_user_profile(self, cognito_sub: str, email: str):
-
-        user = User(
-            user_id=cognito_sub,
-            email=email.lower(),
-            created_at=datetime.now(timezone.utc).isoformat()
-        )
-        self._repository.create_if_absent(user)
-
-        return user
+    def register_customer(self, customer_details: CustomerDetails) -> Customer:
+        return self._repository.create_customer(customer_details)

@@ -1,3 +1,4 @@
+from sqlalchemy import URL
 from sqlalchemy.engine import Engine
 from sqlmodel import create_engine
 
@@ -8,7 +9,6 @@ from factory.database_factory import DatabaseFactory
 class DBSession:
     def __init__(self, config: Datasource):
         self._engine: Engine | None = None
-        self._connection_url: str | None = None
         self._config: Datasource = config
 
     @property
@@ -20,7 +20,7 @@ class DBSession:
         if self._engine is None:
             self._get_connection()
             self._engine = create_engine(
-                self._connection_url,
+                self._get_connection(),
                 echo=self._config.options.echo
             )
 
@@ -34,7 +34,7 @@ class DBSession:
         """
         self._engine = db_engine
 
-    def _get_connection(self) -> None:
+    def _get_connection(self) -> str | URL:
         """
         Loads the database driver and creates a connection URL.
         """
@@ -43,4 +43,4 @@ class DBSession:
             self._config.driver.driver_class
         )
 
-        self._connection_url = driver(self._config).get_connection()
+        return driver(self._config).get_connection()

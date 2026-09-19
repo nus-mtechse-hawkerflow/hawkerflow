@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Column, DateTime, text, Relationship
 
 
-class CustomerLoyaltyPoints(SQLModel, table=True):
-    __tablename__ = "customer_loyalty_points"
+class CustomerLoyalty(SQLModel, table=True):
+    __tablename__ = "customer_loyalty"
 
     f_customer_id: str = Field(
         default=None,
@@ -12,12 +12,6 @@ class CustomerLoyaltyPoints(SQLModel, table=True):
         nullable=False,
         primary_key=True,
         foreign_key="customer.f_id"
-    )
-    f_phone_number: str = Field(
-        default=None,
-        max_length=20,
-        unique=True,
-        index=True
     )
     f_loyalty_tier: str = Field(default="BRONZE")
     f_loyalty_points: int
@@ -42,4 +36,4 @@ class CustomerLoyaltyPoints(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
 
-    customer: "Customer" = Relationship(back_populates="loyalty_points")
+    customer: "Customer" = Relationship(back_populates="customer_loyalty")
