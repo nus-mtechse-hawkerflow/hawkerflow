@@ -1,4 +1,5 @@
 name: CI
+
 on:
   pull_request:
   push:
@@ -8,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  ruff:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,14 +17,39 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Unit and repository tests (pytest + moto)
-        run: pytest -q
-      - name: Dependency vulnerability scan (pip-audit)
-        run: pip-audit -r requirements-dev.txt
+      - run: ruff check .
 
-  secret-scan:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pip-audit -r requirements-dev.txt
+
+  bandit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install bandit
+      - run: bandit -r . -x .venv
+
+  gitleaks:
     runs-on: ubuntu-latest
     env:
       GITLEAKS_VERSION: "8.30.1"
@@ -31,11 +57,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Install gitleaks
         run: |
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" |
-            tar -xz gitleaks
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+          | tar -xz gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
+
       - name: Scan repository for secrets
         run: gitleaks detect --source . --config .gitleaks.toml -v --redact
 
@@ -46,7 +74,5 @@ jobs:
       - uses: aws-actions/setup-sam@v2
         with:
           use-installer: true
-      - name: Validate template (offline lint)
-        run: sam validate -t infra/template.yaml --lint --region ap-southeast-1
-      - name: Prove the app builds
-        run: sam build -t infra/template.yaml
+      - run: sam validate -t infra/template.yaml --lint --region ap-southeast-1
+      - run: sam build -t infra/template.yaml
