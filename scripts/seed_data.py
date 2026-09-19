@@ -10,7 +10,7 @@ import argparse
 
 import boto3
 
-PASSWORD = "HawkerDemo1!"  # demo-only credential, rotate for any real use  # noqa: S105  # nosec B105
+PASSWORD = "HawkerDemo1!"  # demo-only credential, rotate for any real use  # noqa: S105
 
 STALLS = [
     {

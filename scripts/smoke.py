@@ -21,10 +21,10 @@ def main() -> int:
 
     api = stack_outputs(args.stack)["ApiUrl"]
     url = f"{api}/v1/centres/{args.centre}/stalls"
-    with urllib.request.urlopen(url, timeout=10) as res:  # noqa: S310 - our own API URL  # nosec B310
+    with urllib.request.urlopen(url, timeout=10) as res:  # noqa: S310 - our own API URL
         body = json.loads(res.read())
-        assert res.status == 200, f"expected 200, got {res.status}"  # smoke test check  # nosec B101
-        assert "stalls" in body, "response missing 'stalls'"  # smoke test check  # nosec B101
+        assert res.status == 200, f"expected 200, got {res.status}"
+        assert "stalls" in body, "response missing 'stalls'"
     print(f"SMOKE OK  {url}  ({len(body['stalls'])} stall(s))")
     return 0
 

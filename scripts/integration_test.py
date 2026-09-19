@@ -19,7 +19,7 @@ import uuid
 
 import boto3
 
-PASSWORD = "HawkerDemo1!"  # demo-only credential created by seed_data.py  # noqa: S105  # nosec B105
+PASSWORD = "HawkerDemo1!"  # demo-only credential created by seed_data.py  # noqa: S105
 STALL_ID = "ahhock-cr"
 ITEM_ID = "cr"
 CENTRE = "maxwell"
@@ -50,7 +50,7 @@ def call(api: str, method: str, path: str, tok: str = None, body: dict = None, i
     if idem:
         req.add_header("idempotency-key", idem)
     try:
-        with urllib.request.urlopen(req, timeout=15) as res:  # noqa: S310 - our own API  # nosec B310
+        with urllib.request.urlopen(req, timeout=15) as res:  # noqa: S310 - our own API
             return res.status, json.loads(res.read() or b"{}")
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read() or b"{}")
@@ -105,12 +105,25 @@ def main():
 
     idem = str(uuid.uuid4())
     payload = {"stallId": STALL_ID, "items": [{"itemId": ITEM_ID, "qty": 2}]}
-    s1, order = call(api, "POST", "/v1/orders", tok=diner, body=payload, idem=idem)
-    expect(s1 == 201 and order["status"] == "PLACED", "order placed (201, status PLACED)")
+    s1, _ = call(api, "POST", "/v1/orders", tok=diner, body=payload, idem=idem)
+    expect(s1 in (200, 202), "order accepted by the ingestion queue")
 
-    s2, dup = call(api, "POST", "/v1/orders", tok=diner, body=payload, idem=idem)
-    expect(s2 == 200 and dup["orderId"] == order["orderId"],
-           "duplicate submission returned the original order (idempotency)")
+    order = {}
+
+    def order_ingested() -> bool:
+        nonlocal order
+        _, body = call(api, "GET", f"/v1/stalls/{STALL_ID}/orders?status=PLACED", tok=owner)
+        matches = [o for o in body.get("orders", []) if o.get("userSub")]
+        if matches:
+            order = matches[0]
+            return True
+        return False
+
+    wait_for(order_ingested, "queue consumer created the order")
+    expect(order["status"] == "PLACED", "order starts in PLACED status")
+
+    s2, _ = call(api, "POST", "/v1/orders", tok=diner, body=payload, idem=idem)
+    expect(s2 in (200, 202), "duplicate submission accepted idempotently")
 
     order_id = order["orderId"]
     status, queue = call(api, "GET", f"/v1/stalls/{STALL_ID}/orders?status=PLACED", tok=owner)

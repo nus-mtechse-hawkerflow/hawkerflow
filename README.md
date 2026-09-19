@@ -23,17 +23,11 @@ see the project report (AD-01 … AD-10).
 | `services/<name>/src/` | One Lambda service each: `handler.py` (transport) / `domain.py` (pure logic) / `repo.py` (data access) |
 | `services/shared/` | Lambda layer with the small shared HTTP helper library |
 | `apps/diner`, `apps/stall` | Single-file web apps (static, no build step) |
-| `apps/demo` | Local-only demo launcher + live dashboard (see below) — not part of the deploy pipeline |
 | `tests/` | pytest: pure domain tests + repository tests against moto-mocked DynamoDB |
-| `.github/workflows/` | `ci.yml` (ruff, tests, pip-audit, bandit, gitleaks, sam-validate) — `deploy.yml` (dev → approval → prod) is a planned follow-up |
+| `.github/workflows/` | `ci.yml` (lint, tests, pip-audit, gitleaks, sam validate) and `deploy.yml` (dev → approval → prod) |
 | `loadtest/order_flow.js` | k6 model: 70 RPS browse + 30 RPS orders for 10 min |
 | `scripts/` | `seed_data.py` (demo users, stalls, menus), `smoke.py` (post-deploy check) |
 | `docs/openapi.yaml` | The platform API contract |
-| `docs/RUN_LOCALLY.md` | Step-by-step local run with checkpoints |
-| `docs/LOCAL_DEV_NOTES.md` | Engineering reference for `local_server.py` and the `/demo/` launcher/dashboard internals |
-| `docs/SETUP.md` | AWS account → deploy → CI/CD → load-test evidence → teardown |
-| `docs/QA_PREP.md` | Presentation Q&A prep, glossary, ownership map |
-| `infra/SECURITY_BASELINE.md` | Every accepted IaC security finding, with justification |
 
 ## Quickstart (from zero to running system)
 
@@ -44,28 +38,15 @@ Prerequisites: an AWS account (new accounts get **US$100–200 credits**), AWS C
 [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html),
 Python 3.12.
 
-### Run it locally first (no AWS account, no Docker)
+On Windows, run this preflight from PowerShell:
 
-```bash
-make install
-make local        # http://localhost:8000/demo/  <- start here
+```powershell
+py -3.12 --version
+.\scripts\bootstrap.ps1
+sam validate -t infra/template.yaml --lint --region ap-southeast-1
+sam build -t infra/template.yaml
+aws sts get-caller-identity --region ap-southeast-1
 ```
-
-The demo launcher (`/demo/`) gives one-click, no-login access to 4 diner personas and the
-stall owner, plus a live dashboard (request counts, orders-by-stall, a "simulate incoming
-orders" button). Or go straight to `/diner/` and `/stall/` for the normal sign-in flow.
-
-> **Full walkthrough:** [docs/RUN_LOCALLY.md](docs/RUN_LOCALLY.md) — step-by-step with
-> checkpoints, the demo script, and troubleshooting.
-
-The whole backend runs in one process against an in-memory DynamoDB (moto): real handler,
-domain and repository code, real dispatcher and consumers driven synchronously in place of
-Streams + SQS, and a stub authorizer standing in for Cognito. State resets on restart.
-Auth for direct API calls: `authorization: local-diner` or `authorization: local-owner`.
-Fault-injection endpoints (`/_local/break`, `/_local/status`, `/_local/repair`, `/_local/redrive`)
-let you rehearse the fault-isolation demo before running it on AWS.
-
-### Deploy to AWS
 
 ```bash
 # 0. Guardrail FIRST - S$5 budget alarm (email-alert version: docs/SETUP.md Part 1)

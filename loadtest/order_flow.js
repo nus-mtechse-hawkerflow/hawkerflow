@@ -1,16 +1,10 @@
-// k6 load model for the scalability demonstration (report sections 4.1 and 6).
+// k6 load model for the capacity demonstration (report sections 4.1 and 6).
 //
-// Whole platform, stepped:
-//   for R in 25 50 100; do k6 run loadtest/order_flow.js -e RATE=$R \
-//     -e API_URL=... -e ID_TOKEN=... ; done
+//   k6 run loadtest/order_flow.js \
+//     -e API_URL=https://xxx.execute-api.ap-southeast-1.amazonaws.com/dev \
+//     -e ID_TOKEN=<diner IdToken> -e STALL_ID=ahhock-cr -e ITEM_ID=cr
 //
-// Single service, to demonstrate INDEPENDENT scalability (microservices evidence):
-//   k6 run loadtest/order_flow.js -e SERVICE=catalog  -e RATE=100 ...
-//   k6 run loadtest/order_flow.js -e SERVICE=ordering -e RATE=40  ...
-//
-// With SERVICE=catalog only the Catalog function should scale; Ordering, Notification
-// and Analytics stay flat at zero concurrency. That divergence is the evidence that
-// services scale independently rather than as one block.
+// 100 RPS total for 10 minutes: 70 RPS browsing (public reads), 30 RPS order placement.
 import http from "k6/http";
 import { check } from "k6";
 import { uuidv4 } from "https://jslib.k6.io/k6-utils/1.4.0/index.js";
@@ -20,36 +14,25 @@ const TOKEN = __ENV.ID_TOKEN;
 const STALL = __ENV.STALL_ID || "ahhock-cr";
 const ITEM = __ENV.ITEM_ID || "cr";
 const CENTRE = __ENV.CENTRE_ID || "maxwell";
-const RATE = Number(__ENV.RATE || 100);
-const SERVICE = (__ENV.SERVICE || "all").toLowerCase();   // all | catalog | ordering
-const DURATION = __ENV.DURATION || "10m";
-
-function scenario(exec, rate) {
-  return {
-    executor: "constant-arrival-rate",
-    exec,
-    rate: Math.max(1, Math.round(rate)),
-    timeUnit: "1s",
-    duration: DURATION,
-    preAllocatedVUs: Math.max(10, Math.round(rate)),
-    maxVUs: 300,
-  };
-}
-
-const scenarios = {};
-if (SERVICE === "all" || SERVICE === "catalog") {
-  scenarios.browse = scenario("browse", SERVICE === "catalog" ? RATE : RATE * 0.7);
-}
-if (SERVICE === "all" || SERVICE === "ordering") {
-  scenarios.order = scenario("order", SERVICE === "ordering" ? RATE : RATE * 0.3);
-}
+const RATE = Number(__ENV.RATE || 100);           // total RPS, split 70/30 browse/order
 
 export const options = {
-  scenarios,
   thresholds: {
     "http_req_duration{scenario:browse}": ["p(95)<300"],
     "http_req_duration{scenario:order}": ["p(95)<500"],
     http_req_failed: ["rate<0.01"],
+  },
+  scenarios: {
+    browse: {
+      executor: "constant-arrival-rate", exec: "browse",
+      rate: Math.round(RATE * 0.7), timeUnit: "1s", duration: "10m",
+      preAllocatedVUs: 60, maxVUs: 200,
+    },
+    order: {
+      executor: "constant-arrival-rate", exec: "order",
+      rate: Math.round(RATE * 0.3), timeUnit: "1s", duration: "10m",
+      preAllocatedVUs: 40, maxVUs: 200,
+    },
   },
 };
 

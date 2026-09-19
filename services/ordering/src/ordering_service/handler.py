@@ -1,5 +1,5 @@
 """Ordering service - order intake and lifecycle API."""
-import logging
+import json
 from datetime import datetime, timezone
 
 from shared.http import (
@@ -13,11 +13,11 @@ from shared.http import (
     resp,
     sub,
 )
+from shared.observability import configure_logging, correlation_id, log_extra
 
 from . import domain, repo
 
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = configure_logging("ordering")
 
 
 def _now_iso() -> str:
@@ -25,6 +25,8 @@ def _now_iso() -> str:
 
 
 def lambda_handler(event, _context):
+    if "Records" in event:
+        return _process_queue(event)
     try:
         return _route(event)
     except ApiError as exc:
@@ -32,6 +34,42 @@ def lambda_handler(event, _context):
     except Exception:  # noqa: BLE001
         log.exception("unhandled error")
         return error(500, "internal error")
+
+
+def _process_queue(event):
+    failures = []
+    for record in event["Records"]:
+        try:
+            envelope = json.loads(record["body"])
+            request_correlation_id = envelope.get("correlationId") or correlation_id(envelope)
+            user = envelope["userSub"]
+            idempotency_key = envelope["idempotencyKey"]
+            order_request = envelope["order"]
+            stall_id = order_request.get("stallId") or ""
+            stall, menu = repo.get_stall_and_menu(stall_id)
+            order = domain.build_order(
+                user, stall, menu, order_request.get("items"), idempotency_key, _now_iso()
+            )
+            order["correlationId"] = request_correlation_id
+            repo.create_order(order)
+            log.info(
+                "order persisted",
+                extra=log_extra(
+                    request_correlation_id,
+                    event="order_persisted",
+                    orderId=order["orderId"],
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            log.exception(
+                "failed to process order message",
+                extra=log_extra(
+                    request_correlation_id if "request_correlation_id" in locals() else "unknown",
+                    event="order_failed",
+                ),
+            )
+            failures.append({"itemIdentifier": record["messageId"]})
+    return {"batchItemFailures": failures}
 
 
 def _route(event):

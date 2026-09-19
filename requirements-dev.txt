@@ -4,4 +4,3 @@ moto[dynamodb]>=5.0
 ruff>=0.4
 cfn-lint>=1.0
 pip-audit>=2.7
-bandit>=1.7

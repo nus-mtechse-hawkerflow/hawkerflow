@@ -6,14 +6,13 @@ Ordering function) avoids the dual-write problem: an order can never be saved
 without its event eventually being delivered (at-least-once).
 """
 import json
-import logging
 import os
 
 import boto3
 from boto3.dynamodb.types import TypeDeserializer
+from shared.observability import configure_logging, log_extra
 
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = configure_logging("dispatcher")
 
 _DESERIALIZER = TypeDeserializer()
 _STATUS_EVENT = {
@@ -63,6 +62,7 @@ def to_event(record: dict):
             for ln in new.get("lines", [])
         ],
         "at": new.get("updatedAt") or new.get("createdAt"),
+        "correlationId": new.get("correlationId") or new.get("orderId"),
     }
 
 
@@ -78,5 +78,5 @@ def lambda_handler(event, _context):
         for queue_url in queues:
             sqs.send_message(QueueUrl=queue_url, MessageBody=body)
         published += 1
-    log.info("published %d event(s) from %d record(s)", published, len(event.get("Records", [])))
+    log.info("published events", extra=log_extra("batch", event="events_published", published=published))
     return {"published": published}

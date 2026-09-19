@@ -1,24 +1,12 @@
-# Python
 __pycache__/
 *.pyc
-*.pyo
-.pytest_cache/
-.venv/
-venv/
-*.egg-info/
-
-# SAM build output
 .aws-sam/
-
-# OS
-.DS_Store
-
-# Env/secrets
+.pytest_cache/
+.ruff_cache/
 .env
-.env.*
-*.pem
-*.key
-
-# Editors
-.vscode/
-.idea/
+node_modules/
+packaged.yaml
+.venv/
+build.toml
+venv/
+env/
