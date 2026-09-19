@@ -1,13 +1,12 @@
 """Authenticated HTTP order intake boundary."""
 import json
-import logging
 import os
 
 import boto3
 from shared.http import ApiError, error, header, json_body, resp, sub
+from shared.observability import configure_logging, correlation_id, log_extra
 
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = configure_logging("order-intake")
 sqs = boto3.client("sqs")
 
 
@@ -36,13 +35,16 @@ def _route(event):
     if not isinstance(order, dict):
         raise ApiError(400, "order body must be a JSON object")
 
+    request_correlation_id = correlation_id(event)
     envelope = {
         "userSub": sub(event),
         "idempotencyKey": idempotency_key,
+        "correlationId": request_correlation_id,
         "order": order,
     }
     sqs.send_message(
         QueueUrl=os.environ["ORDER_INGESTION_QUEUE_URL"],
         MessageBody=json.dumps(envelope),
     )
+    log.info("order accepted for processing", extra=log_extra(request_correlation_id, event="order_queued"))
     return resp(202, {"accepted": True})

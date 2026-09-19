@@ -26,21 +26,16 @@ def test_order_intake_enqueues_trusted_order_envelope(monkeypatch):
 
     assert result["statusCode"] == 202
     assert json.loads(result["body"]) == {"accepted": True}
-    assert messages == [
-        {
-            "QueueUrl": "https://queue.example/orders",
-            "MessageBody": json.dumps(
-                {
-                    "userSub": "diner-sub",
-                    "idempotencyKey": "key-1",
-                    "order": {
-                        "stallId": "stall-1",
-                        "items": [{"itemId": "cr", "qty": 1}],
-                    },
-                }
-            ),
-        }
-    ]
+    assert len(messages) == 1
+    assert messages[0]["QueueUrl"] == "https://queue.example/orders"
+    envelope = json.loads(messages[0]["MessageBody"])
+    assert envelope["userSub"] == "diner-sub"
+    assert envelope["idempotencyKey"] == "key-1"
+    assert envelope["correlationId"]
+    assert envelope["order"] == {
+        "stallId": "stall-1",
+        "items": [{"itemId": "cr", "qty": 1}],
+    }
 
 
 def test_order_intake_rejects_blank_idempotency_key_before_enqueue(monkeypatch):

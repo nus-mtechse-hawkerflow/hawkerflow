@@ -11,6 +11,13 @@ Parameters:
     Type: String
     AllowedValues: [dev, prod]
     Default: dev
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Optional email subscription for CloudWatch alarm notifications
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
 Globals:
   Function:
@@ -79,6 +86,19 @@ Resources:
       Type: String
       Value: '90'
       Description: Online retention of order records in days (read by the ordering service)
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub hawkerflow-${Stage}-alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      Protocol: email
+      TopicArn: !Ref AlertTopic
+      Endpoint: !Ref AlertEmail
 
   # ---------------- Events ----------------
   NotificationsDLQ:
@@ -287,6 +307,7 @@ Resources:
         Type: Canary10Percent5Minutes
         Alarms:
           - !Ref OrderIntakeErrorsAlarm
+          - !Ref OrderIntakeThrottlesAlarm
       CodeUri: ../services/order_intake/src
       Handler: order_intake_service.handler.lambda_handler
       Environment:
@@ -312,6 +333,8 @@ Resources:
         Type: Canary10Percent5Minutes
         Alarms:
           - !Ref OrderingErrorsAlarm
+          - !Ref OrderingThrottlesAlarm
+          - !Ref OrderingDurationAlarm
       CodeUri: ../services/ordering/src
       Handler: ordering_service.handler.lambda_handler
       Policies:
@@ -477,7 +500,266 @@ Resources:
       LogGroupName: !Sub /aws/lambda/hawkerflow-${Stage}-analytics
       RetentionInDays: 14
 
-  # ---------------- Observability: alarms (11 per stage) ----------------
+  # ---------------- Observability: alarms ----------------
+  OrderQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-orders-queue-depth
+      AlarmDescription: Orders waiting for asynchronous processing
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - {Name: QueueName, Value: !GetAtt OrderIngestionQueue.QueueName}
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  OrderQueueAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-orders-oldest-message
+      AlarmDescription: Oldest order message is waiting too long
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - {Name: QueueName, Value: !GetAtt OrderIngestionQueue.QueueName}
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 120
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  NotificationQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-notifications-queue-depth
+      AlarmDescription: Notifications waiting for processing
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - {Name: QueueName, Value: !GetAtt NotificationsQueue.QueueName}
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  AnalyticsQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-analytics-queue-depth
+      AlarmDescription: Analytics events waiting for processing
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - {Name: QueueName, Value: !GetAtt AnalyticsQueue.QueueName}
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  OrderIntakeThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-order-intake-throttles
+      AlarmDescription: Order intake Lambda is being throttled
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref OrderIntakeFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  OrderingThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-ordering-throttles
+      AlarmDescription: Ordering Lambda is being throttled
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref OrderingFunction}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  OrderingDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-ordering-duration
+      AlarmDescription: Ordering Lambda duration is approaching its timeout
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref OrderingFunction}
+      ExtendedStatistic: p99
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 9000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  DynamoDBReadThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-dynamodb-read-throttles
+      AlarmDescription: DynamoDB reads are being throttled
+      Namespace: AWS/DynamoDB
+      MetricName: ReadThrottleEvents
+      Dimensions:
+        - {Name: TableName, Value: !Ref PlatformTable}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  DynamoDBWriteThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-dynamodb-write-throttles
+      AlarmDescription: DynamoDB writes are being throttled
+      Namespace: AWS/DynamoDB
+      MetricName: WriteThrottleEvents
+      Dimensions:
+        - {Name: TableName, Value: !Ref PlatformTable}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  ApiLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-api-latency
+      AlarmDescription: API integration latency is elevated
+      Namespace: AWS/ApiGateway
+      MetricName: IntegrationLatency
+      Dimensions:
+        - {Name: ApiId, Value: !Ref Api}
+        - {Name: Stage, Value: !Ref Stage}
+      ExtendedStatistic: p99
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 3000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  Api4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-api-4xx
+      AlarmDescription: API client errors are elevated
+      Namespace: AWS/ApiGateway
+      MetricName: 4xx
+      Dimensions:
+        - {Name: ApiId, Value: !Ref Api}
+        - {Name: Stage, Value: !Ref Stage}
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 25
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  CloudFront5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-cloudfront-5xx
+      AlarmDescription: CloudFront errors are elevated
+      Namespace: AWS/CloudFront
+      MetricName: 5xxErrorRate
+      Dimensions:
+        - {Name: DistributionId, Value: !Ref WebDistribution}
+        - {Name: Region, Value: Global}
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  CloudFrontLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-cloudfront-origin-latency
+      AlarmDescription: CloudFront origin latency is elevated
+      Namespace: AWS/CloudFront
+      MetricName: OriginLatency
+      Dimensions:
+        - {Name: DistributionId, Value: !Ref WebDistribution}
+        - {Name: Region, Value: Global}
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  S34xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub hawkerflow-${Stage}-s3-4xx
+      AlarmDescription: S3 frontend request errors are elevated
+      Namespace: AWS/S3
+      MetricName: 4xxErrors
+      Dimensions:
+        - {Name: BucketName, Value: !Ref WebBucket}
+        - {Name: FilterId, Value: AllRequestsMetrics}
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  ObservabilityDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub hawkerflow-${Stage}-operations
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"API traffic and errors","region":"${AWS::Region}","stat":"Sum","period":60,"metrics":[["AWS/ApiGateway","Count","ApiId","${Api}","Stage","${Stage}"],[".","4xx",".",".",".",".",{"label":"4xx"}],[".","5xx",".",".",".",".",{"label":"5xx"}]]}},
+            {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"Order queue depth and age","region":"${AWS::Region}","stat":"Maximum","period":60,"metrics":[["AWS/SQS","ApproximateNumberOfMessagesVisible","QueueName","${OrderIngestionQueue}"],[".","ApproximateAgeOfOldestMessage",".","."]]}},
+            {"type":"metric","x":0,"y":6,"width":12,"height":8,"properties":{"title":"Lambda errors, throttles and duration","region":"${AWS::Region}","stat":"Sum","period":60,"metrics":[["AWS/Lambda","Errors","FunctionName","${OrderIntakeFunction}"],[".","Throttles",".","."],["AWS/Lambda","Errors","FunctionName","${OrderingFunction}"],[".","Throttles",".","."],[".","Duration",".",".",{"stat":"p99"}]]}},
+            {"type":"metric","x":12,"y":6,"width":12,"height":8,"properties":{"title":"DynamoDB throttles","region":"${AWS::Region}","stat":"Sum","period":60,"metrics":[["AWS/DynamoDB","ReadThrottleEvents","TableName","${PlatformTable}"],[".","WriteThrottleEvents",".","."]]}},
+            {"type":"metric","x":0,"y":14,"width":12,"height":6,"properties":{"title":"CloudFront frontend health","region":"us-east-1","stat":"Average","period":300,"metrics":[["AWS/CloudFront","5xxErrorRate","DistributionId","${WebDistribution}","Region","Global"],[".","OriginLatency",".",".",".","."]]}},
+            {"type":"text","x":12,"y":14,"width":12,"height":6,"properties":{"markdown":"## Canary deployments\nAll Lambda functions use `Canary10Percent5Minutes` with CodeDeploy and CloudWatch rollback alarms."}}
+          ]
+        }
+
   MerchantErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -668,6 +950,8 @@ Resources:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      MetricsConfigurations:
+        - Id: AllRequestsMetrics
 
   WebOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
@@ -723,3 +1007,5 @@ Outputs:
     Value: !Ref WebBucket
   WebUrl:
     Value: !Sub https://${WebDistribution.DomainName}
+  AlertTopicArn:
+    Value: !Ref AlertTopic

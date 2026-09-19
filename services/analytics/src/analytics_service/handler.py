@@ -8,18 +8,17 @@ Idempotency for at-least-once delivery: a conditional marker item per order
 read-modify-write on the aggregate is safe to retry.
 """
 import json
-import logging
 from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from shared.http import ApiError, error, path_param, query_param, require_group, resp, sub, table_name
+from shared.observability import configure_logging, log_extra
 
 from . import domain
 
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = configure_logging("analytics")
 
 
 def _table():
@@ -55,6 +54,14 @@ def _consume(event):
     folded = 0
     for record in event["Records"]:
         evt = json.loads(record["body"])
+        log.info(
+            "analytics event received",
+            extra=log_extra(
+                evt.get("correlationId", "unknown"),
+                event=evt.get("type"),
+                orderId=evt.get("orderId"),
+            ),
+        )
         if evt.get("type") != "OrderCollected":
             continue
         if not _mark_processed(table, evt["orderId"]):

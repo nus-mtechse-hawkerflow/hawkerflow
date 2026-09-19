@@ -1,6 +1,5 @@
 """Ordering service - order intake and lifecycle API."""
 import json
-import logging
 from datetime import datetime, timezone
 
 from shared.http import (
@@ -14,11 +13,11 @@ from shared.http import (
     resp,
     sub,
 )
+from shared.observability import configure_logging, correlation_id, log_extra
 
 from . import domain, repo
 
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = configure_logging("ordering")
 
 
 def _now_iso() -> str:
@@ -42,6 +41,7 @@ def _process_queue(event):
     for record in event["Records"]:
         try:
             envelope = json.loads(record["body"])
+            request_correlation_id = envelope.get("correlationId") or correlation_id(envelope)
             user = envelope["userSub"]
             idempotency_key = envelope["idempotencyKey"]
             order_request = envelope["order"]
@@ -50,9 +50,24 @@ def _process_queue(event):
             order = domain.build_order(
                 user, stall, menu, order_request.get("items"), idempotency_key, _now_iso()
             )
+            order["correlationId"] = request_correlation_id
             repo.create_order(order)
+            log.info(
+                "order persisted",
+                extra=log_extra(
+                    request_correlation_id,
+                    event="order_persisted",
+                    orderId=order["orderId"],
+                ),
+            )
         except Exception:  # noqa: BLE001
-            log.exception("failed to process order message")
+            log.exception(
+                "failed to process order message",
+                extra=log_extra(
+                    request_correlation_id if "request_correlation_id" in locals() else "unknown",
+                    event="order_failed",
+                ),
+            )
             failures.append({"itemIdentifier": record["messageId"]})
     return {"batchItemFailures": failures}
 

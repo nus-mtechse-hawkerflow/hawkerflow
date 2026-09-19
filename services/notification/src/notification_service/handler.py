@@ -6,15 +6,14 @@ Idempotent by design: notifications are keyed by (orderId, status), so an
 at-least-once redelivery overwrites the same item instead of duplicating it.
 """
 import json
-import logging
 import time
 
 import boto3
 from boto3.dynamodb.conditions import Key
 from shared.http import ApiError, error, resp, sub, table_name
+from shared.observability import configure_logging, log_extra
 
-log = logging.getLogger()
-log.setLevel(logging.INFO)
+log = configure_logging("notification")
 
 NOTIF_TTL_SECONDS = 30 * 24 * 3600
 
@@ -51,6 +50,14 @@ def _consume(event):
     table = _table()
     for record in event["Records"]:
         evt = json.loads(record["body"])
+        log.info(
+            "notification event received",
+            extra=log_extra(
+                evt.get("correlationId", "unknown"),
+                event=evt.get("type"),
+                orderId=evt.get("orderId"),
+            ),
+        )
         template = _MESSAGES.get(evt.get("type"))
         if not template or not evt.get("userSub"):
             continue
