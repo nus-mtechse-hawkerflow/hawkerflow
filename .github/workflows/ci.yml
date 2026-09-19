@@ -37,7 +37,7 @@ jobs:
             tar -xz gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
       - name: Scan repository for secrets
-        run: gitleaks detect --source . -v --redact
+        run: gitleaks detect --source . --config .gitleaks.toml -v --redact
 
   sam-validate:
     runs-on: ubuntu-latest
