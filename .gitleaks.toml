@@ -1,7 +1,4 @@
 [allowlist]
-2
 paths = [
-3
 '''\.venv/.*'''
-4
 ]
